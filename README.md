@@ -1,5 +1,5 @@
 # ViewPage-
-ViewPage源码阅读  
+ViewPage源码阅读：可视页面与预缓存页面  
 ViewPage基本上每一个应用中都是必不可少的，主要适用于主页面的切换，轮播图，以及水平的滑动页面切换效果等。因为ViewPage内部帮我们实现了滑动冲突的处理，所以在开发时，我们可以忽略这个问题，但是本着知其所以然的态度，我还是花了三天的时间，好好梳理了一下ViewPage的大部分源码，因此写下笔记，记录一下体会：
 首先看一下ViewPage的简单使用
     
@@ -92,7 +92,9 @@ setAdapter方法开始：
     }
     
 循环遍历ViewPage的所有child ,清除非页卡的View，也就是Adapter中的View。接下来看一下populate方法，该方法比较长，看了半天一脸萌萌的，
-    
+1：ItemInfo保存页面的信息
+2：mItems存储需要缓存的页面，即当前展示页和预缓存页面
+    
     void populate() {
 
         populate(mCurItem);
