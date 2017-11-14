@@ -78,7 +78,8 @@ setAdapter方法开始：
         }
     }
     
-可以看出首先会判断mAdapter是否为null，若为null，则会销毁所有的缓存View(除Adapter中View之外的View)，后重置所有ViewPage绘制条件。接下来会新建一个mObserver传递给mAdapter，用于观察数据的改变。若当前属于第一次layout，则调用populate来销毁与重构页面，mAdapterChangeListeners用于检测适配器的状况。  
+可以看出首先会判断mAdapter是否为null，若为null，则会销毁所有的缓存View(除Adapter中View之外的View)，后重置所有ViewPage绘制条件。接下来会新建一个mObserver传递给mAdapter，用于观察数据的改变。若当前属于第一次layout，则调用populate来销毁与重构页面，mAdapterChangeListeners用于检测适配器的状况
+    
     private void removeNonDecorViews() {
         for (int i = 0; i < getChildCount(); i++) {
             final View child = getChildAt(i);
