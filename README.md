@@ -90,4 +90,224 @@ setAdapter方法开始：
             }
         }
     }
-循环遍历ViewPage的所有child ,清除非页卡的View，也就是Adapter中的View。
+    
+循环遍历ViewPage的所有child ,清除非页卡的View，也就是Adapter中的View。接下来看一下populate方法，该方法比较长，看了半天一脸萌萌的，
+    
+    void populate() {
+
+        populate(mCurItem);
+    }
+
+    void populate(int newCurrentItem) {
+
+        //确保当前展示页一定是mCurItem
+        ItemInfo oldCurInfo = null;
+        if (mCurItem != newCurrentItem) {
+            oldCurInfo = infoForPosition(mCurItem);
+            mCurItem = newCurrentItem;
+        }
+
+        if (mAdapter == null) {
+            //对ViewPage中页卡进行排序，有限绘制DecordView
+            //然后按照按照Position大小进行绘制
+            sortChildDrawingOrder();
+            return;
+        }
+
+       /**
+        * 等待populate，当用户手指滑动到新的position时推迟创建页卡
+        * 直到滑动到最终位置，避免错误
+        * 当手指滑动到边缘或者手指抬起，View仍在滑动mPopulatePending==true
+        */
+        if (mPopulatePending) {
+            if (DEBUG) Log.i(TAG, "populate is pending, skipping for now...");
+            sortChildDrawingOrder();
+            return;
+        }
+
+       //没连接到Window之前不绘制
+        if (getWindowToken() == null) {
+            return;
+        }
+        //mAdapter开始更新页面
+        mAdapter.startUpdate(this);
+        //startPos<缓存页面数>endPos
+        final int pageLimit = mOffscreenPageLimit;
+        //确保起始位置>=0
+        final int startPos = Math.max(0, mCurItem - pageLimit);
+        final int N = mAdapter.getCount();
+        //确保结束位置<=N - 1
+        final int endPos = Math.min(N - 1, mCurItem + pageLimit);
+        //判断用户是否增加了数据源的元素，若增加了没调用notify，报错
+        if (N != mExpectedAdapterCount) {
+            String resName;
+            try {
+                resName = getResources().getResourceName(getId());
+            } catch (Resources.NotFoundException e) {
+                resName = Integer.toHexString(getId());
+            }
+            throw new IllegalStateException("The application's MPageAdapter changed the adapter's"
+                    + " contents without calling MPageAdapter#notifyDataSetChanged!"
+                    + " Expected adapter item count: " + mExpectedAdapterCount + ", found: " + N
+                    + " Pager id: " + resName
+                    + " Pager class: " + getClass()
+                    + " Problematic adapter: " + mAdapter.getClass());
+        }
+
+        /**
+         * 找到当前的项目，或者在需要的时候创建它
+         */
+        int curIndex = -1;
+        ItemInfo curItem = null;
+        for (curIndex = 0; curIndex < mItems.size(); curIndex++) {
+            final ItemInfo ii = mItems.get(curIndex);
+            if (ii.position >= mCurItem) {
+                if (ii.position == mCurItem) curItem = ii;
+                break;
+            }
+        }
+        //若不存在当前页卡，则说明列表中没有保存，添加该页面到mItems集合中
+        if (curItem == null && N > 0) {
+            //添加页面到列表尾部
+            curItem = addNewItem(mCurItem, curIndex);
+        }
+        // 默认缓存当前页卡两边的View，若设定了缓存数量
+        // 则当前页面两边都缓存指定数量
+        // 若没有页面，则啥也不做
+        if (curItem != null) {
+            float extraWidthLeft = 0.f;
+            //取出当前页面左边的页面下标
+            int itemIndex = curIndex - 1;
+            //存在则取出，不存在设为null
+            ItemInfo ii = itemIndex >= 0 ? mItems.get(itemIndex) : null;
+            final int clientWidth = getClientWidth();
+            //算出左边页面需要的宽度，这里的宽度是实际宽度与可视区域宽度的比例
+            //即实际宽度=leftWidthNeeded*clientWidth
+            final float leftWidthNeeded = clientWidth <= 0 ? 0 :
+                    2.f - curItem.widthFactor + (float) getPaddingLeft() / (float) clientWidth;
+
+            //遍历当前页面左边每一个页面
+            for (int pos = mCurItem - 1; pos >= 0; pos--) {
+                //左边宽度超过了可需宽度，且当前页面比第一个缓存页面位置小，则需要销毁
+                if (extraWidthLeft >= leftWidthNeeded && pos < startPos) {
+                    //左边没有页面了，跳出循环
+                    if (ii == null) {
+                        break;
+                    }
+                    //将当前页面destroy
+                    if (pos == ii.position && !ii.scrolling) {
+                        mItems.remove(itemIndex);
+                        mAdapter.destroyItem(this, pos, ii.object);
+                        if (DEBUG) {
+                            Log.i(TAG, "populate() - destroyItem() with pos: " + pos
+                                    + " view: " + ((View) ii.object));
+                        }
+                        itemIndex--;
+                        curIndex--;
+                        ii = itemIndex >= 0 ? mItems.get(itemIndex) : null;
+                    }
+                } else if (ii != null && pos == ii.position) {
+                    //如果当前页面是需要缓存的页面，且页面已存在，则左边页面宽度+当前页面
+                    extraWidthLeft += ii.widthFactor;
+                    //往左遍历
+                    itemIndex--;
+                    ii = itemIndex >= 0 ? mItems.get(itemIndex) : null;
+
+                } else {
+                    //若当前页面需要缓存，且不存在页面，则创建
+                    ii = addNewItem(pos, itemIndex + 1);
+                    extraWidthLeft += ii.widthFactor;
+                    //左边新加一个View，当前可视页面索引号+1
+                    curIndex++;
+                    ii = itemIndex >= 0 ? mItems.get(itemIndex) : null;
+
+                    Log.i("mao","111extraWidthLeft="+extraWidthLeft);
+                }
+            }
+
+            //遍历当前页面右边View
+            float extraWidthRight = curItem.widthFactor;
+            //因为这里使用了curIndex，所以之前的可视化页面索引改变了则必须++
+            itemIndex = curIndex + 1;
+            if (extraWidthRight < 2.f) {
+                ii = itemIndex < mItems.size() ? mItems.get(itemIndex) : null;
+                final float rightWidthNeeded = clientWidth <= 0 ? 0 :
+                        (float) getPaddingRight() / (float) clientWidth + 2.f;
+                for (int pos = mCurItem + 1; pos < N; pos++) {
+                    //当前页面下标大于endPos且超出需要宽度
+                    if (extraWidthRight >= rightWidthNeeded && pos > endPos) {
+                        if (ii == null) {
+                            break;
+                        }
+                        if (pos == ii.position && !ii.scrolling) {
+                            mItems.remove(itemIndex);
+                            mAdapter.destroyItem(this, pos, ii.object);
+                            if (DEBUG) {
+                                Log.i(TAG, "populate() - destroyItem() with pos: " + pos
+                                        + " view: " + ((View) ii.object));
+                            }
+                            ii = itemIndex < mItems.size() ? mItems.get(itemIndex) : null;
+                        }
+                    } else if (ii != null && pos == ii.position) {
+                        extraWidthRight += ii.widthFactor;
+                        itemIndex++;
+                        ii = itemIndex < mItems.size() ? mItems.get(itemIndex) : null;
+                    } else {
+                        //因为实在集合右边添加item，之前已经调用itemIndex = curIndex + 1;，所以无需再次调用
+                        ii = addNewItem(pos, itemIndex);
+                        itemIndex++;
+                        extraWidthRight += ii.widthFactor;
+                        ii = itemIndex < mItems.size() ? mItems.get(itemIndex) : null;
+                    }
+                }
+            }
+
+            //新老页面之间的计算
+            calculatePageOffsets(curItem, curIndex, oldCurInfo);
+        }
+
+        if (DEBUG) {
+            Log.i(TAG, "Current page list:");
+            for (int i = 0; i < mItems.size(); i++) {
+                Log.i(TAG, "#" + i + ": page " + mItems.get(i).position);
+            }
+        }
+        //显示当前页面
+        mAdapter.setPrimaryItem(this, mCurItem, curItem != null ? curItem.object : null);
+        //停止更新
+        mAdapter.finishUpdate(this);
+
+        // 检查页面宽度是否测量，没有则重新测量
+        final int childCount = getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            final View child = getChildAt(i);
+            final LayoutParams lp = (LayoutParams) child.getLayoutParams();
+            lp.childIndex = i;
+            if (!lp.isDecor && lp.widthFactor == 0.f) {
+                // 0 means requery the adapter for this, it doesn't have a valid width.
+                final ItemInfo ii = infoForChild(child);
+                if (ii != null) {
+                    lp.widthFactor = ii.widthFactor;
+                    lp.position = ii.position;
+                }
+            }
+        }
+        sortChildDrawingOrder();
+
+        //Viewpage被视为可获取焦点，则当前页面获取焦点
+        if (hasFocus()) {
+            View currentFocused = findFocus();
+            ItemInfo ii = currentFocused != null ? infoForAnyChild(currentFocused) : null;
+            if (ii == null || ii.position != mCurItem) {
+                for (int i = 0; i < getChildCount(); i++) {
+                    View child = getChildAt(i);
+                    ii = infoForChild(child);
+                    if (ii != null && ii.position == mCurItem) {
+                        if (child.requestFocus(View.FOCUS_FORWARD)) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
