@@ -4,11 +4,9 @@ ViewPage基本上每一个应用中都是必不可少的，主要适用于主页
 首先看一下ViewPage的简单使用
     
     viewpage.setAdapter(new VpAdpter(list));
-这里的VpAdpter是我创建的一个适配器继承自PageAdapter，可以来说仅仅一句话就可以实现页面的切换效果。接下来就根据这句代码来分析ViewPage的源码，首先从
+这里的VpAdpter是我创建的一个适配器继承自PageAdapter，可以来说仅仅一句话就可以实现页面的切换效果。接下来就根据这句代码来分析ViewPage的源码，首先从  
 setAdapter方法开始：
-    /**
-     * 设置adapter
-     */
+    
     public void setAdapter(MPageAdapter adapter) {
         //若ViewPage之前存在adapter，清除之前的adapter
         if (mAdapter != null) {
@@ -76,6 +74,17 @@ setAdapter方法开始：
         if (mAdapterChangeListeners != null && !mAdapterChangeListeners.isEmpty()) {
             for (int i = 0, count = mAdapterChangeListeners.size(); i < count; i++) {
                 mAdapterChangeListeners.get(i).onAdapterChanged(this, oldAdapter, adapter);
+            }
+        }
+    }
+可以看出首先会判断mAdapter是否为null，若为null，则会销毁所有的缓存View(除Adapter中View之外的View)，后重置所有ViewPage绘制条件。接下来会新建一个mObserver传递给mAdapter，用于观察数据的改变。若当前属于第一次layout，则调用populate来销毁与重构页面，mAdapterChangeListeners用于检测适配器的状况。  
+    private void removeNonDecorViews() {
+        for (int i = 0; i < getChildCount(); i++) {
+            final View child = getChildAt(i);
+            final LayoutParams lp = (LayoutParams) child.getLayoutParams();
+            if (!lp.isDecor) {
+                removeViewAt(i);
+                i--;
             }
         }
     }
